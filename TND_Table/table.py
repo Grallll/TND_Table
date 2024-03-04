@@ -7,11 +7,28 @@ class Table():
     def __init__(self,
                  table: List[list],
                  size: int,
-                 font: str = None) -> None:
+                 font: str = None,
+                 distance: Tuple[int, int, int, int] = (0,)*4,
+                 lining_size: int = 1) -> None:
+        """
+        Args:
+            table (List[list]): Two-dimensional array from which
+                                the image will be made.
+            size (int): Font size.
+            font (str, optional): Font by .ttf file.
+            distance (Tuple[int, int, int, int]): Distance to lining.
+                                                  Defaults to (0, 0, 0, 0)
+        """
         self.table = table
         self.size = size
         self.font = ImageFont.truetype(font=font,
                                        size=size)
+        self.distance = distance
+        self.lining_size = lining_size
+        self.colors = []
+
+        self.__all_to_string()
+
         self.__set_size()
 
         width = int(sum(self.columns))
@@ -21,6 +38,11 @@ class Table():
             mode='RGB',
             size=(width, hight),
             color='white')
+
+    def __all_to_string(self) -> None:
+        for row in range(len(self.table)):
+            for column in range(len(self.table[row])):
+                self.table[row][column] = str(self.table[row][column])
 
     def __set_width(self,
                     row: int,
@@ -32,8 +54,9 @@ class Table():
         max_width_text = max(self.table[row][column].split('\n'),
                              key=len)
         font_size = self.font.getlength(max_width_text)
-        if font_size > self.columns[column]:
-            self.columns[column] = font_size
+        real_font_size = font_size + self.distance[2] + self.distance[3]
+        if real_font_size > self.columns[column]:
+            self.columns[column] = real_font_size
 
     def __set_hight(self,
                     row: int) -> None:
@@ -44,7 +67,7 @@ class Table():
         max_hight = max(self.table[row],
                         key=lambda string: string.count('\n'))
         font_size = (max_hight.count('\n')+1)*self.__font_hight
-        self.rows[row] = font_size
+        self.rows[row] = font_size + self.distance[0] + self.distance[1]
 
     def __set_size(self) -> None:
         """
@@ -69,9 +92,9 @@ class Table():
         """
         Creates text in cells.
         """
-        step = [0, 0]
+        step = [self.distance[0], self.distance[2]]
         for row in range(len(self.table)):
-            step[1] = 0
+            step[1] = self.distance[2]
             for column in range(len(self.table[row])):
                 ImageDraw.Draw(self.img).text(
                     (step[1], step[0]),
@@ -90,19 +113,19 @@ class Table():
             ImageDraw.Draw(self.img).line(
                 ((0, step), (self.img.width, step)),
                 fill="Black",
-                width=1)
+                width=self.lining_size)
             step += row
         step = 0
         for column in self.columns:
             ImageDraw.Draw(self.img).line(
                 ((step, 0), (step, self.img.height)),
                 fill="Black",
-                width=1)
+                width=self.lining_size)
             step += column
 
     def colorize_row(self,
                      color: Tuple[int, int, int],
-                     row: int):
+                     row: int) -> None:
         """
         Sets color for any row.
 
@@ -111,15 +134,11 @@ class Table():
             row (int): Row to be colored.
         """
         if len(self.rows) > row > -1:
-            line = sum(self.rows[:row])
-            ImageDraw.Draw(self.img).rectangle(
-                ((0, line),
-                 (self.img.width, line + self.rows[row])),
-                fill=color)
+            self.colors.append((0, color, row))
 
     def colorize_column(self,
                         color: tuple,
-                        column: int):
+                        column: int) -> None:
         """
         Sets color for any column.
 
@@ -128,11 +147,7 @@ class Table():
             row (int): Column to be colored.
         """
         if len(self.columns) > column > -1:
-            line = sum(self.columns[:column])
-            ImageDraw.Draw(self.img).rectangle(
-                ((line, 0),
-                 (line + self.columns[column], self.img.height)),
-                fill=color)
+            self.colors.append((1, color, column))
 
     def colorize_cells(self,
                        color: tuple,
@@ -147,27 +162,70 @@ class Table():
                                 EXAMPLE: ((0, 0), (1, 1), (2, 2))
         """
         for cell in cells:
-            if ((len(self.columns) > cell[0] > -1) and
-               (len(self.rows) > cell[1] > -1)):
-                column = sum(self.columns[:cell[0]])
-                row = sum(self.rows[:cell[1]])
-                left_top = (column, row)
-                right_bottom = (column + self.columns[cell[0]],
-                                row+self.rows[cell[1]])
-                ImageDraw.Draw(self.img).rectangle(
-                    (left_top, right_bottom),
-                    fill=color)
+            if ((len(self.columns) > cell[1] > -1) and
+               (len(self.rows) > cell[0] > -1)):
+                self.colors.append((2, color, (cell[0], cell[1])))
+            else:
+                print(cell, len(self.columns))
 
-    def get_png(self,
-                lining: bool = True) -> Image:
+    def __colorize_row(self,
+                       color: Tuple[int, int, int],
+                       row: int) -> None:
+        line = sum(self.rows[:row])
+        ImageDraw.Draw(self.img).rectangle(
+            ((0, line),
+                (self.img.width, line + self.rows[row])),
+            fill=color)
+
+    def __colorize_column(self,
+                          color: tuple,
+                          column: int) -> None:
+        line = sum(self.columns[:column])
+        ImageDraw.Draw(self.img).rectangle(
+            ((line, 0),
+                (line + self.columns[column], self.img.height)),
+            fill=color)
+
+    def __colorize_cells(self,
+                         color: tuple,
+                         cell: Tuple[tuple]) -> None:
+        column = sum(self.columns[:cell[1]])
+        row = sum(self.rows[:cell[0]])
+        left_top = (column, row)
+        right_bottom = (column + self.columns[cell[1]],
+                        row+self.rows[cell[0]])
+        ImageDraw.Draw(self.img).rectangle(
+            (left_top, right_bottom),
+            fill=color)
+
+    def get_PIL_img(self,
+                    lining: bool = True) -> Image:
         """
         Get current image (PIL.Image.Image).
 
         Args:
-            lining (bool, optional): Is markup necessary? Defaults to True.
+            lining (bool, optional): Sets the markup. Defaults to True.
         """
+        colorize = {
+            0: self.__colorize_row,
+            1: self.__colorize_column,
+            2: self.__colorize_cells
+        }
+        for color in self.colors:
+            colorize[color[0]](color[1], color[2])
+
         self.__texting()
         if lining:
             self.__lining()
-
         return self.img
+
+    def get_img(self,
+                way: str = 'Table_by_TND.png') -> None:
+        """
+        Makes .png file.
+
+        Args:
+            way (str, optional): Way to .png file.
+                                 Defaults to 'Table_by_TND.png'.
+        """
+        self.get_PIL_img().save(way)
